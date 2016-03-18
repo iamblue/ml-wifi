@@ -40,7 +40,6 @@ DELCARE_HANDLER(wifi) {
       char ssid_buffer [ssid_req_sz+1];
       ssid_req_sz = jerry_api_string_to_char_buffer (ssid.v_string, (jerry_api_char_t *) ssid_buffer, ssid_req_sz);
       ssid_buffer[ssid_req_sz] = '\0';
-
       /* mode */
       int mode_req_sz = jerry_api_string_to_char_buffer(mode.v_string, NULL, 0);
       mode_req_sz *= -1;
@@ -57,6 +56,7 @@ DELCARE_HANDLER(wifi) {
 
       uint8_t opmode;
       uint8_t port;
+
       if (strncmp (mode_buffer, "station", (size_t)mode_req_sz) == 0) {
         opmode = WIFI_MODE_STA_ONLY;
         port = WIFI_PORT_STA;
@@ -64,6 +64,7 @@ DELCARE_HANDLER(wifi) {
         opmode  = WIFI_MODE_AP_ONLY;
         port = WIFI_PORT_AP;
       }
+
       uint8_t *ssid = ssid_buffer;
       wifi_auth_mode_t auth = WIFI_AUTH_MODE_WPA_PSK_WPA2_PSK;
       wifi_encrypt_type_t encrypt = WIFI_ENCRYPT_TYPE_TKIP_AES_MIX;
