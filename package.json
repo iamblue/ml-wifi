@@ -1,10 +1,14 @@
 {
   "name": "ml-wifi",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "The wifi package for Microlattice.js",
   "main": "index.js",
-  "supportIC":[ "mt7687" ],
-  "src": ["./src/ml-wifi.c"],
+  "supportIC": [
+    "mt7687"
+  ],
+  "src": [
+    "./src/ml-wifi.c"
+  ],
   "scripts": {
     "test": ""
   },
