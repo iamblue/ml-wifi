@@ -6,8 +6,7 @@
 
 ``` js
 
-var wifi = require('ml-wifi');
-var Wifi = new wifi({
+wifi({
   mode: 'ap', // default is station
   auth: 'PSK_WPA2',
   ssid: 'Input your ssid',
@@ -23,8 +22,7 @@ var EventEmitter = require('ml-event').EventEmitter;
 var eventStatus = new EventEmitter();
 global.eventStatus = eventStatus;
 
-var wifi = require('ml-wifi');
-var Wifi = new wifi({
+wifi({
   mode: 'station', // default is station
   auth: 'PSK_WPA2',
   ssid: 'Input your ssid',

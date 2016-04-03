@@ -7,7 +7,7 @@
 
 #include "microlattice.h"
 
-DELCARE_HANDLER(wifiActive) {
+DELCARE_HANDLER(__wifiActive) {
   wifi_config_set_radio(args_p[0].v_uint32);
 
   ret_val_p->type = JERRY_API_DATA_TYPE_BOOLEAN;
@@ -15,7 +15,7 @@ DELCARE_HANDLER(wifiActive) {
   return true;
 }
 
-DELCARE_HANDLER(wifi) {
+DELCARE_HANDLER(__wifi) {
   if (args_p[0].type == JERRY_API_DATA_TYPE_OBJECT) {
     jerry_api_value_t mode;
     jerry_api_value_t ssid;
@@ -35,22 +35,21 @@ DELCARE_HANDLER(wifi) {
       // g_callbackvalue = args_p[1];
 
       /* ssid */
-      int ssid_req_sz = jerry_api_string_to_char_buffer(ssid.v_string, NULL, 0);
-      ssid_req_sz *= -1;
-      char ssid_buffer [ssid_req_sz+1];
+      int ssid_req_sz = -jerry_api_string_to_char_buffer(ssid.v_string, NULL, 0);
+      char * ssid_buffer = (char*) malloc (ssid_req_sz);
       ssid_req_sz = jerry_api_string_to_char_buffer (ssid.v_string, (jerry_api_char_t *) ssid_buffer, ssid_req_sz);
       ssid_buffer[ssid_req_sz] = '\0';
+
+
       /* mode */
-      int mode_req_sz = jerry_api_string_to_char_buffer(mode.v_string, NULL, 0);
-      mode_req_sz *= -1;
-      char mode_buffer [mode_req_sz+1]; // 不能有*
+      int mode_req_sz = -jerry_api_string_to_char_buffer(mode.v_string, NULL, 0);
+      char * mode_buffer = (char*) malloc (mode_req_sz);
       mode_req_sz = jerry_api_string_to_char_buffer (mode.v_string, (jerry_api_char_t *) mode_buffer, mode_req_sz);
       mode_buffer[mode_req_sz] = '\0';
 
       /* password */
-      int password_req_sz = jerry_api_string_to_char_buffer(password.v_string, NULL, 0);
-      password_req_sz *= -1;
-      char password_buffer [password_req_sz+1];
+      int password_req_sz = -jerry_api_string_to_char_buffer(password.v_string, NULL, 0);
+      char * password_buffer = (char*) malloc (password_req_sz);
       password_req_sz = jerry_api_string_to_char_buffer (password.v_string, (jerry_api_char_t *) password_buffer, password_req_sz);
       password_buffer[password_req_sz] = '\0';
 
@@ -96,6 +95,6 @@ DELCARE_HANDLER(wifi) {
 }
 
 void ml_wifi_init (void) {
-  REGISTER_HANDLER(wifi);
-  REGISTER_HANDLER(wifiActive);
+  REGISTER_HANDLER(__wifi);
+  REGISTER_HANDLER(__wifiActive);
 }
