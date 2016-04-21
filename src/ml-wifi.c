@@ -97,13 +97,13 @@ DELCARE_HANDLER(__wifi) {
   return true;
 }
 
-void wifi_connect(void) {
-  char script [] = "global.eventStatus.emit('wifiConnect', true);";
-  jerry_api_value_t eval_ret;
-  jerry_api_eval (script, strlen (script), false, false, &eval_ret);
-  jerry_api_release_value (&eval_ret);
-  vTaskDelete(NULL);
-}
+// void wifi_connect(void) {
+//   char script [] = "global.eventStatus.emit('wifiConnect', true);";
+//   jerry_api_value_t eval_ret;
+//   jerry_api_eval (script, strlen (script), false, false, &eval_ret);
+//   jerry_api_release_value (&eval_ret);
+//   vTaskDelete(NULL);
+// }
 
 void wifi_connect_task(void *parameter) {
   wifi_connect();
@@ -118,8 +118,10 @@ void wifi_callback(const struct netif *netif) {
 
 void ml_wifi_init (void) {
 
-  wifi_register_ip_ready_callback(wifi_callback);
-  network_init();
+  if (0 == fota_mode) {
+    wifi_register_ip_ready_callback(wifi_callback);
+    network_init();
+  }
 
   REGISTER_HANDLER(__wifi);
   REGISTER_HANDLER(__wifiActive);
