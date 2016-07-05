@@ -6,7 +6,7 @@
 
 ``` js
 
-wifi({
+__wifi({
   mode: 'ap', // default is station
   auth: 'PSK_WPA2',
   ssid: 'Input your ssid',
@@ -18,11 +18,8 @@ wifi({
 ### Station mode
 
 ``` js
-var EventEmitter = require('ml-event').EventEmitter;
-var eventStatus = new EventEmitter();
-global.eventStatus = eventStatus;
 
-wifi({
+__wifi({
   mode: 'station', // default is station
   auth: 'PSK_WPA2',
   ssid: 'Input your ssid',
