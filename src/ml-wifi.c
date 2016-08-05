@@ -1,14 +1,112 @@
+#include <stdint.h>
+#include <stdio.h>
 #include <string.h>
+
 #include "FreeRTOS.h"
 #include "task.h"
+#include "os.h"
+#include "semphr.h"
 #include "wifi_api.h"
-#include "wifi_scan.h"
+#include "lwip/ip4_addr.h"
+#include "lwip/inet.h"
+#include "lwip/netif.h"
+#include "lwip/tcpip.h"
+#include "lwip/dhcp.h"
+#include "ethernetif.h"
+#include "portmacro.h"
+#include "app_common.h"
+
 #include "jerry.h"
-
-#include "net_init.h"
-#include "network_init.h"
-
 #include "microlattice.h"
+
+static SemaphoreHandle_t ip_ready;
+
+/**
+  * @brief  dhcp got ip will callback this function.
+  * @param[in] struct netif *netif: which network interface got ip.
+  * @retval None
+  */
+static void _ip_ready_callback(struct netif *netif)
+{
+    if (!ip4_addr_isany_val(netif->ip_addr)) {
+        char ip_addr[17] = {0};
+        if (NULL != inet_ntoa(netif->ip_addr)) {
+            strcpy(ip_addr, inet_ntoa(netif->ip_addr));
+            LOG_I(common, "************************");
+            LOG_I(common, "DHCP got IP:%s", ip_addr);
+            LOG_I(common, "************************");
+            wifi_callback();
+        } else {
+            LOG_E(common, "DHCP got Failed");
+        }
+    }
+    xSemaphoreGive(ip_ready);
+    LOG_I(common, "ip ready");
+}
+
+static int32_t _wifi_event_handler(wifi_event_t event,
+        uint8_t *payload,
+        uint32_t length)
+{
+    struct netif *sta_if;
+    LOG_I(common, "wifi event: %d", event);
+
+    switch(event)
+    {
+    case WIFI_EVENT_IOT_PORT_SECURE:
+        sta_if = netif_find_by_type(NETIF_TYPE_STA);
+        netif_set_link_up(sta_if);
+        LOG_I(common, "wifi connected");
+        break;
+    case WIFI_EVENT_IOT_DISCONNECTED:
+        sta_if = netif_find_by_type(NETIF_TYPE_STA);
+        netif_set_link_down(sta_if);
+        LOG_I(common, "wifi disconnected");
+        break;
+    }
+
+    return 1;
+}
+
+
+
+void wifi_connect(void)
+{
+  char script [] = "global.eventStatus.emit('wifiConnect', true);";
+  jerry_api_value_t eval_ret;
+  jerry_api_eval (script, strlen (script), false, false, &eval_ret);
+  jerry_api_release_value (&eval_ret);
+}
+
+wifi_config_t wifi_config = {0};
+lwip_tcpip_config_t tcpip_config = {{0}, {0}, {0}, {0}, {0}, {0}};
+
+void wifi_initial_task() {
+  struct netif *sta_if;
+  wifi_init(&wifi_config, NULL);
+  lwip_tcpip_init(&tcpip_config, WIFI_MODE_STA_ONLY);
+
+  ip_ready = xSemaphoreCreateBinary();
+
+  sta_if = netif_find_by_type(NETIF_TYPE_STA);
+  netif_set_status_callback(sta_if, _ip_ready_callback);
+  dhcp_start(sta_if);
+
+  // wait for result
+  xSemaphoreTake(ip_ready, portMAX_DELAY);
+  vTaskDelete(NULL);
+}
+
+void wifi_connect_task(void *parameter) {
+  wifi_connect();
+  for (;;) {
+      ;
+  }
+}
+
+void wifi_callback(const struct netif *netif) {
+  xTaskCreate(wifi_connect_task, "WifiTask", 8048, NULL, 1, NULL);
+}
 
 DELCARE_HANDLER(__wifiActive) {
   wifi_config_set_radio(args_p[0].v_uint32);
@@ -32,11 +130,6 @@ DELCARE_HANDLER(__wifi) {
     jerry_api_get_object_field_value (args_p[0].v_object, (jerry_api_char_t *) "password", &password);
 
     if (is_ok && mode.type == JERRY_API_DATA_TYPE_STRING) {
-      // g_httpcallback = jerry_api_create_object ();
-      // g_httpcallback.v_object = args_p[1].v_object;
-      // jerry_api_value_t
-      // g_callbackvalue = args_p[1];
-
       /* ssid */
       int ssid_req_sz = -jerry_api_string_to_char_buffer(ssid.v_string, NULL, 0);
       char * ssid_buffer = (char*) malloc (ssid_req_sz);
@@ -56,34 +149,26 @@ DELCARE_HANDLER(__wifi) {
       password_req_sz = jerry_api_string_to_char_buffer (password.v_string, (jerry_api_char_t *) password_buffer, password_req_sz);
       password_buffer[password_req_sz] = '\0';
 
-      uint8_t opmode;
-      uint8_t port;
+      wifi_connection_register_event_handler(WIFI_EVENT_IOT_INIT_COMPLETE , _wifi_event_handler);
+      wifi_connection_register_event_handler(WIFI_EVENT_IOT_CONNECTED, _wifi_event_handler);
+      wifi_connection_register_event_handler(WIFI_EVENT_IOT_PORT_SECURE, _wifi_event_handler);
+      wifi_connection_register_event_handler(WIFI_EVENT_IOT_DISCONNECTED, _wifi_event_handler);
 
       if (strncmp (mode_buffer, "station", (size_t)mode_req_sz) == 0) {
-        opmode = WIFI_MODE_STA_ONLY;
-        port = WIFI_PORT_STA;
+        // opmode = WIFI_MODE_STA_ONLY;
+        wifi_config.opmode = WIFI_MODE_STA_ONLY;
+        // port = WIFI_PORT_STA;
+        strcpy((char *)wifi_config.sta_config.ssid, ssid_buffer);
+        wifi_config.sta_config.ssid_length = strlen(ssid_buffer);
+        strcpy((char *)wifi_config.sta_config.password, password_buffer);
+        wifi_config.sta_config.password_length = strlen(password_buffer);
+
       } else if (strncmp (mode_buffer, "ap", (size_t)mode_req_sz) == 0) {
-        opmode  = WIFI_MODE_AP_ONLY;
-        port = WIFI_PORT_AP;
+        wifi_config.opmode = WIFI_MODE_AP_ONLY;
+        // port = WIFI_PORT_AP;
       }
 
-      uint8_t *ssid = ssid_buffer;
-      wifi_auth_mode_t auth = WIFI_AUTH_MODE_WPA_PSK_WPA2_PSK;
-      wifi_encrypt_type_t encrypt = WIFI_ENCRYPT_TYPE_TKIP_AES_MIX;
-      uint8_t *password = password_buffer;
-      uint8_t nv_opmode;
-
-      if (wifi_config_init() == 0) {
-        wifi_config_get_opmode(&nv_opmode);
-        if (nv_opmode != opmode) {
-            wifi_config_set_opmode(opmode);
-        }
-        wifi_config_set_ssid(port, ssid ,strlen(ssid));
-        wifi_config_set_security_mode(port, auth, encrypt);
-        wifi_config_set_wpa_psk_key(port, password, strlen(password));
-        wifi_config_reload_setting();
-        network_dhcp_start(opmode);
-      }
+      xTaskCreate(wifi_initial_task, "WifiInitTask", 2048, NULL, 1, NULL);
 
       jerry_api_release_object(&mode);
       jerry_api_release_object(&ssid);
@@ -97,32 +182,7 @@ DELCARE_HANDLER(__wifi) {
   return true;
 }
 
-// void wifi_connect(void) {
-//   char script [] = "global.eventStatus.emit('wifiConnect', true);";
-//   jerry_api_value_t eval_ret;
-//   jerry_api_eval (script, strlen (script), false, false, &eval_ret);
-//   jerry_api_release_value (&eval_ret);
-//   vTaskDelete(NULL);
-// }
-
-void wifi_connect_task(void *parameter) {
-  wifi_connect();
-  for (;;) {
-      ;
-  }
-}
-
-void wifi_callback(const struct netif *netif) {
-  xTaskCreate(wifi_connect_task, "WifiTask", 8048, NULL, 1, NULL);
-}
-
 void ml_wifi_init (void) {
-
-  if (0 == fota_mode) {
-    wifi_register_ip_ready_callback(wifi_callback);
-    network_init();
-  }
-
   REGISTER_HANDLER(__wifi);
   REGISTER_HANDLER(__wifiActive);
 }
