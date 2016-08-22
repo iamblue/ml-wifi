@@ -16,7 +16,7 @@
 #include "portmacro.h"
 #include "app_common.h"
 
-#include "jerry.h"
+#include "jerry-api.h"
 #include "microlattice.h"
 
 static SemaphoreHandle_t ip_ready;
@@ -68,14 +68,12 @@ static int32_t _wifi_event_handler(wifi_event_t event,
     return 1;
 }
 
-
-
 void wifi_connect(void)
 {
   char script [] = "global.eventStatus.emit('wifiConnect', true);";
-  jerry_api_value_t eval_ret;
-  jerry_api_eval (script, strlen (script), false, false, &eval_ret);
-  jerry_api_release_value (&eval_ret);
+  jerry_value_t eval_ret;
+  eval_ret = jerry_eval(script, strlen (script), false);
+  jerry_release_value (eval_ret);
 }
 
 wifi_config_t wifi_config = {0};
@@ -109,44 +107,38 @@ void wifi_callback(const struct netif *netif) {
 }
 
 DELCARE_HANDLER(__wifiActive) {
-  wifi_config_set_radio(args_p[0].v_uint32);
-
-  ret_val_p->type = JERRY_API_DATA_TYPE_BOOLEAN;
-  ret_val_p->v_bool = true;
-  return true;
+  wifi_config_set_radio(jerry_get_number_value(args_p[0]));
+  return jerry_create_boolean (true);
 }
 
 DELCARE_HANDLER(__wifi) {
-  if (args_p[0].type == JERRY_API_DATA_TYPE_OBJECT) {
-    jerry_api_value_t mode;
-    jerry_api_value_t ssid;
-    jerry_api_value_t password;
+  if (jerry_value_is_object(args_p[0])) {
 
     // mode
-    bool is_ok = jerry_api_get_object_field_value (args_p[0].v_object, (jerry_api_char_t *) "mode", &mode);
+    jerry_value_t prop_mode = jerry_create_string ((const jerry_char_t *) "mode");
+    jerry_value_t mode = jerry_get_property(args_p[0], prop_mode);
     // ssid
-    jerry_api_get_object_field_value (args_p[0].v_object, (jerry_api_char_t *) "ssid", &ssid);
+    jerry_value_t prop_ssid = jerry_create_string ((const jerry_char_t *) "ssid");
+    jerry_value_t ssid = jerry_get_property(args_p[0], prop_ssid);
     // password
-    jerry_api_get_object_field_value (args_p[0].v_object, (jerry_api_char_t *) "password", &password);
+    jerry_value_t prop_password = jerry_create_string ((const jerry_char_t *) "password");
+    jerry_value_t password = jerry_get_property(args_p[0], prop_password);
 
-    if (is_ok && mode.type == JERRY_API_DATA_TYPE_STRING) {
+    if (jerry_value_is_string(mode)) {
       /* ssid */
-      int ssid_req_sz = -jerry_api_string_to_char_buffer(ssid.v_string, NULL, 0);
-      char * ssid_buffer = (char*) malloc (ssid_req_sz);
-      ssid_req_sz = jerry_api_string_to_char_buffer (ssid.v_string, (jerry_api_char_t *) ssid_buffer, ssid_req_sz);
+      jerry_size_t ssid_req_sz = jerry_get_string_size (ssid);
+      jerry_char_t ssid_buffer[ssid_req_sz];
+      jerry_string_to_char_buffer (ssid, ssid_buffer, ssid_req_sz);
       ssid_buffer[ssid_req_sz] = '\0';
-
-
       /* mode */
-      int mode_req_sz = -jerry_api_string_to_char_buffer(mode.v_string, NULL, 0);
-      char * mode_buffer = (char*) malloc (mode_req_sz);
-      mode_req_sz = jerry_api_string_to_char_buffer (mode.v_string, (jerry_api_char_t *) mode_buffer, mode_req_sz);
+      jerry_size_t mode_req_sz = jerry_get_string_size (mode);
+      jerry_char_t mode_buffer[mode_req_sz];
+      jerry_string_to_char_buffer (mode, mode_buffer, mode_req_sz);
       mode_buffer[mode_req_sz] = '\0';
-
       /* password */
-      int password_req_sz = -jerry_api_string_to_char_buffer(password.v_string, NULL, 0);
-      char * password_buffer = (char*) malloc (password_req_sz);
-      password_req_sz = jerry_api_string_to_char_buffer (password.v_string, (jerry_api_char_t *) password_buffer, password_req_sz);
+      jerry_size_t password_req_sz = jerry_get_string_size (password);
+      jerry_char_t password_buffer[password_req_sz];
+      jerry_string_to_char_buffer (password, password_buffer, password_req_sz);
       password_buffer[password_req_sz] = '\0';
 
       wifi_connection_register_event_handler(WIFI_EVENT_IOT_INIT_COMPLETE , _wifi_event_handler);
@@ -155,31 +147,30 @@ DELCARE_HANDLER(__wifi) {
       wifi_connection_register_event_handler(WIFI_EVENT_IOT_DISCONNECTED, _wifi_event_handler);
 
       if (strncmp (mode_buffer, "station", (size_t)mode_req_sz) == 0) {
-        // opmode = WIFI_MODE_STA_ONLY;
         wifi_config.opmode = WIFI_MODE_STA_ONLY;
-        // port = WIFI_PORT_STA;
         strcpy((char *)wifi_config.sta_config.ssid, ssid_buffer);
-        wifi_config.sta_config.ssid_length = strlen(ssid_buffer);
+        wifi_config.sta_config.ssid_length = ssid_req_sz;
         strcpy((char *)wifi_config.sta_config.password, password_buffer);
-        wifi_config.sta_config.password_length = strlen(password_buffer);
+        wifi_config.sta_config.password_length = password_req_sz;
 
       } else if (strncmp (mode_buffer, "ap", (size_t)mode_req_sz) == 0) {
         wifi_config.opmode = WIFI_MODE_AP_ONLY;
-        // port = WIFI_PORT_AP;
       }
 
       xTaskCreate(wifi_initial_task, "WifiInitTask", 2048, NULL, 1, NULL);
 
-      jerry_api_release_object(&mode);
-      jerry_api_release_object(&ssid);
-      jerry_api_release_object(&password);
-
     }
+
+    jerry_release_value(prop_mode);
+    jerry_release_value(prop_ssid);
+    jerry_release_value(prop_password);
+    jerry_release_value(mode);
+    jerry_release_value(ssid);
+    jerry_release_value(password);
+
   }
 
-  ret_val_p->type = JERRY_API_DATA_TYPE_OBJECT;
-  ret_val_p->v_object = args_p[0].v_object;
-  return true;
+  return jerry_create_boolean (true);
 }
 
 void ml_wifi_init (void) {
